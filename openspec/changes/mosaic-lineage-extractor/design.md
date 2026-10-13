@@ -77,9 +77,13 @@ Para possibilitar que o usuário use o visual Sankey por níveis no Strategy Dos
 - `dependent_type`: Tipo do dependente (`dossier`, `report`, `bot_agent` ou `none`).
 - `weight`: Métrica de contagem / peso (numérico = `1`).
 
-*Harmonização entre Tabelas do Cubo:*
+*Harmonização entre Tabelas do Cubo e Rastreabilidade de Métricas:*
 - Em `Metrics_Catalog`, incluir as colunas `object_name` (correspondendo ao nome da métrica) e `model_name`. No motor analítico do Strategy, atributos com nomes idênticos em tabelas distintas de um mesmo SuperCube são automaticamente associados, permitindo relacionar `Lineage_Sankey` e `Metrics_Catalog` nativamente.
 - A presença de `formula` diretamente na tabela `Lineage_Sankey` elimina 100% da dependência de relacionamentos cruzados para grades simples, garantindo performance e zero falhas de visualização.
+- **Rastreabilidade de Métricas Calculadas**:
+  - Quando `object_type == "metric"`, identificar tabelas upstream inspecionando os nós referenciados pela fórmula (`calculates_from` -> `fact_metric` -> `table`).
+  - Associar `formula` ao campo `m_def.formula_text` gerado por tokens / expressão textual.
+  - Se métrica não referenciar tabela física direta, associar ao modelo sem quebrar a cadeia.
 
 ### Decisão 5: Resolução Bilíngue de Pastas de Destino (Inglês e Português)
 

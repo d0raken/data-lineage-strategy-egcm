@@ -14,9 +14,10 @@ Data lineage atual em Strategy/MicroStrategy necessita de rastreabilidade comple
   1. `source_name`: Apenas a fonte de dados / banco de dados (ex: `postgres_emarinho`).
   2. `table_name`: Tabela física/lógica utilizada pelo modelo.
   3. `model_name`: Modelo de dados Mosaic.
-  4. `object_name` e `object_type`: Atributo ou métrica criada com seu tipo.
-  5. `formula`, `aggregation`, `is_compound`: Definição e fórmula da métrica diretamente associada à linha do objeto.
+  4. `object_name` e `object_type`: Atributo, métrica de fato ou métrica calculada (`attribute`, `fact_metric`, `metric`).
+  5. `formula`, `aggregation`, `is_compound`: Definição e fórmula da métrica diretamente associada à linha do objeto (reconstituída via tokens/expressões para métricas calculadas e agregações para fatos).
   6. `dependent_name` e `dependent_type`: Artefatos downstream consumidores (Dossiers, Relatórios, Bots/Agentes) ou `(Nenhum)`.
+- Rastrear tabelas upstream de métricas calculadas (`object_type: metric`) através das dependências dos fatos referenciados pela fórmula, garantindo integridade no caminho `source_name --> table_name --> model_name --> object_name --> formula`.
 - Reestruturar tabela `Lineage_Sankey` no SuperCube para conter tanto os nós do fluxo quanto `formula`, eliminando quebra de relacionamentos ao montar planilhas/grids com `source_name --> table_name --> model_name --> object_name --> formula`.
 - Harmonizar nomes de chaves entre `Lineage_Sankey` e `Metrics_Catalog` (`object_name`, `model_name`) para que o Strategy estabeleça relacionamento natural entre as tabelas do cubo.
 - Suportar internacionalização de pastas no Strategy: salvar e localizar automaticamente sob `Public Objects > Reports > Data Lineage` OU `Objetos Públicos > Relatórios > Data Lineage`.

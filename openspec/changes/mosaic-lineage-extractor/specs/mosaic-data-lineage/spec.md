@@ -73,3 +73,8 @@ Além disso, manter as tabelas `Nodes`, `Edges` e `Metrics_Catalog` (enriquecida
 #### Scenario: Publicação em projetos com idioma inglês ou português
 - **WHEN** usuário executa publicação de cubo em um projeto configurado em português (como `INCA`) ou em inglês (como `Strategy Labs`)
 - **THEN** sistema resolve automaticamente a pasta pai (`Reports` ou `Relatórios` sob `Public Objects` ou `Objetos Públicos`), cria a subpasta `Data Lineage` e publica o cubo com êxito sem erros de caminho inexistente
+
+#### Scenario: Presença e correspondência de métricas calculadas e fórmulas no Lineage_Sankey
+- **WHEN** modelo de dados contiver métricas calculadas (endpoints `/metrics` ou catálogo semântico de métricas)
+- **THEN** sistema gera linhas em `Lineage_Sankey` com `object_type="metric"`, preenche `formula` com a expressão textual calculada (tokens reconstituídos ou `expressionText`), e associa tabelas de origem através das dependências dos fatos referenciados pela métrica
+
