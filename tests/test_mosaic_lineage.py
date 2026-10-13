@@ -180,7 +180,15 @@ class TestMosaicLineage(unittest.TestCase):
         graph = builder.build_from_model_data(
             model_metadata={"id": "DM_SALES", "name": "Modelo de Vendas"},
             attributes_data=[{"id": "ATTR_PROD", "name": "Produto", "forms": [{"tables": [{"id": "TBL_VENDAS", "name": "vendas"}]}]}],
-            metrics_data=[{"id": "M_TOTAL", "name": "Total Vendas"}],
+            metrics_data=[{
+                "id": "M_TOTAL",
+                "name": "Total Vendas",
+                "expression": {
+                    "tokens": [
+                        {"type": "object_reference", "target": {"objectId": "FM_QTD", "name": "Quantidade", "subType": "FACT_METRIC"}}
+                    ]
+                }
+            }],
             fact_metrics_data=[{"id": "FM_QTD", "name": "Quantidade", "table": {"id": "TBL_VENDAS", "name": "vendas"}}],
             relationships_data=[],
             datasource_data={"id": "DS_POSTGRES", "name": "Postgres DW", "type": "database_connection"},
@@ -216,10 +224,9 @@ class TestMosaicLineage(unittest.TestCase):
         publisher = CubePublisher(connection=MagicMock())
         df_sankey = publisher.build_sankey_dataframe(graph)
 
-        self.assertGreater(len(df_sankey), 0)
         expected_cols = {
             "source_name", "table_name", "model_name",
-            "object_name", "object_type",
+            "object_name", "object_type", "metric_name",
             "formula", "aggregation", "is_compound",
             "dependent_name", "dependent_type", "weight"
         }
@@ -231,10 +238,14 @@ class TestMosaicLineage(unittest.TestCase):
         self.assertEqual(set(df_sankey["table_name"].unique()), {"vendas"})
         # Valida que model_name contém o modelo
         self.assertEqual(set(df_sankey["model_name"].unique()), {"Modelo de Vendas"})
-        # Valida objetos semânticos
+        # Valida objetos semânticos base
         objects = set(df_sankey["object_name"].unique())
         self.assertIn("Produto", objects)
-        self.assertIn("Total Vendas", objects)
+        self.assertIn("Quantidade", objects)
+        # Valida métricas calculadas e links diretos
+        metrics = set(df_sankey["metric_name"].unique())
+        self.assertIn("Total Vendas", metrics)
+        self.assertIn("(Direto)", metrics)
         # Valida dependentes downstream
         dependents = set(df_sankey["dependent_name"].unique())
         self.assertIn("Painel Executivo", dependents)
@@ -260,6 +271,7 @@ class TestMosaicLineage(unittest.TestCase):
         self.assertIn("table_name", df_sankey.columns)
         self.assertIn("model_name", df_sankey.columns)
         self.assertIn("object_name", df_sankey.columns)
+        self.assertIn("metric_name", df_sankey.columns)
         self.assertIn("formula", df_sankey.columns)
         self.assertIn("dependent_name", df_sankey.columns)
         self.assertIn("weight", df_sankey.columns)
@@ -371,29 +383,37 @@ class TestMosaicLineage(unittest.TestCase):
         publisher = CubePublisher(connection=MagicMock())
         df_sankey = publisher.build_sankey_dataframe(graph)
 
-        # 1. Verifica presença de todos os tipos em object_type
-        object_types = set(df_sankey["object_type"].unique())
-        self.assertIn("attribute", object_types)
-        self.assertIn("fact_metric", object_types)
-        self.assertIn("metric", object_types)
+        # 1. Verifica presença de metric_name no DataFrame
+        self.assertIn("metric_name", df_sankey.columns)
 
-        # 2. Verifica correspondência exata de fórmulas para métricas calculadas
-        df_imposto = df_sankey[df_sankey["object_name"] == "Imposto Calculado"]
+        # 2. Verifica encadeamento exato: fact_metric (object_name) -> metric_name
+        df_imposto = df_sankey[df_sankey["metric_name"] == "Imposto Calculado"]
         self.assertFalse(df_imposto.empty)
+        self.assertEqual(df_imposto.iloc[0]["object_name"], "Valor Bruto")
+        self.assertEqual(df_imposto.iloc[0]["object_type"], "fact_metric")
         self.assertEqual(df_imposto.iloc[0]["formula"], "[Valor Bruto] * 0.15")
-        self.assertEqual(df_imposto.iloc[0]["object_type"], "metric")
-        # Rastreabilidade upstream resolvida via fato -> tabela
         self.assertEqual(df_imposto.iloc[0]["table_name"], "tb_lancamentos")
         self.assertEqual(df_imposto.iloc[0]["source_name"], "Oracle ERP")
 
-        df_liq = df_sankey[df_sankey["object_name"] == "Valor Líquido"]
+        df_liq = df_sankey[df_sankey["metric_name"] == "Valor Líquido"]
         self.assertFalse(df_liq.empty)
+        self.assertEqual(df_liq.iloc[0]["object_name"], "Valor Bruto")
+        self.assertEqual(df_liq.iloc[0]["object_type"], "fact_metric")
         self.assertEqual(df_liq.iloc[0]["formula"], "[Valor Bruto] - [Imposto Calculado]")
-        self.assertEqual(df_liq.iloc[0]["object_type"], "metric")
         self.assertEqual(df_liq.iloc[0]["is_compound"], "True")
         self.assertEqual(df_liq.iloc[0]["table_name"], "tb_lancamentos")
 
-        # 3. Verifica Metrics_Catalog
+        # 3. Verifica preservação do relacionamento direto para atributo e fact metric (metric_name = '(Direto)')
+        df_conta = df_sankey[df_sankey["object_name"] == "Conta Contábil"]
+        self.assertFalse(df_conta.empty)
+        self.assertEqual(df_conta.iloc[0]["object_type"], "attribute")
+        self.assertEqual(df_conta.iloc[0]["metric_name"], "(Direto)")
+
+        df_bruto_direto = df_sankey[(df_sankey["object_name"] == "Valor Bruto") & (df_sankey["metric_name"] == "(Direto)")]
+        self.assertFalse(df_bruto_direto.empty)
+        self.assertEqual(df_bruto_direto.iloc[0]["object_type"], "fact_metric")
+
+        # 4. Verifica Metrics_Catalog
         df_cat = publisher.build_metrics_dataframe(graph)
         metric_names = set(df_cat["object_name"].unique())
         self.assertIn("Imposto Calculado", metric_names)

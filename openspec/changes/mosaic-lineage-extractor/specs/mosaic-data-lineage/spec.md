@@ -76,5 +76,10 @@ Além disso, manter as tabelas `Nodes`, `Edges` e `Metrics_Catalog` (enriquecida
 
 #### Scenario: Presença e correspondência de métricas calculadas e fórmulas no Lineage_Sankey
 - **WHEN** modelo de dados contiver métricas calculadas (endpoints `/metrics` ou catálogo semântico de métricas)
-- **THEN** sistema gera linhas em `Lineage_Sankey` com `object_type="metric"`, preenche `formula` com a expressão textual calculada (tokens reconstituídos ou `expressionText`), e associa tabelas de origem através das dependências dos fatos referenciados pela métrica
+- **THEN** sistema gera linhas em `Lineage_Sankey` posicionando a métrica calculada em `metric_name`, associada à primeira `fact_metric` da fórmula em `object_name`, preenche `formula` com a expressão textual calculada, e preserva a cadeia até os dependentes downstream
+
+#### Scenario: Preservação de relacionamento direto entre objetos base e dependentes
+- **WHEN** atributo ou fact metric for consumido diretamente por relatório/dossier sem métrica calculada intermediária
+- **THEN** sistema gera linha conectando diretamente `object_name` ao `dependent_name` com `metric_name="(Direto)"`, garantindo relacionamentos diretos e sem quebra no visual Sankey de 6 níveis
+
 

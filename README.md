@@ -97,15 +97,13 @@ python extract_lineage.py --model-id "3B9C79AD848B478BBA3419E39C2CACBF" --format
 
 O cubo publicado contém 4 tabelas relacionais em memória com relacionamentos nativos harmonizados:
 
-1. **`Lineage_Sankey`** (Pronto para Sankey e Grades com fórmulas):
+1. **`Lineage_Sankey`** (Pronto para Sankey de 6 níveis e Grades com fórmulas):
    - `source_name`: Nome da conexão/banco (ex: `postgres_emarinho`, `Oracle ERP`)
    - `table_name`: Nome da tabela (ex: `video_game_sales`, `tb_lancamentos`)
    - `model_name`: Nome do modelo analítico (ex: `Video Games`)
-   - `object_name`: Nome do atributo ou métrica criada (ex: `Platform`, `Global Sales`, `Valor Líquido`)
-   - `object_type`: Tipo do objeto semântico com três valores disponíveis:
-     - **`attribute`**: Atributo dimensional do modelo
-     - **`fact_metric`**: Métrica direta baseada em fato/coluna (ex: `sum(Valor_Bruto)`)
-     - **`metric`**: Métrica calculada ou composta (ex: `[Valor Bruto] * 0.15`, rastreada até as tabelas upstream dos fatos)
+   - `object_name`: Nome do atributo ou da fact metric de origem (ex: `Platform`, `Valor Bruto`)
+   - `object_type`: Tipo do objeto base (`attribute` ou `fact_metric`)
+   - `metric_name`: Nome da métrica calculada associada (ex: `Valor Líquido`) ou `(Direto)` quando o atributo/fato é consumido diretamente sem intermediários
    - `formula`: **Fórmula resolvida da métrica** (expressão matemática para `metric`, agregação para `fact_metric` ou `'N/A'` para atributos)
    - `aggregation`: Tipo de agregação da métrica (ex: `Sum`, `Avg` ou `'None'`)
    - `is_compound`: Indicador de métrica composta (`'True'`, `'False'` ou `'N/A'`)
@@ -120,7 +118,7 @@ O cubo publicado contém 4 tabelas relacionais em memória com relacionamentos n
 
 ## 6. Como Montar a Visualização no Dossier
 
-### 6.1. Sankey Diagram Multinível (Fluxo Contínuo)
+### 6.1. Sankey Diagram Multinível de 6 Níveis (Fluxo Contínuo)
 1. No **Strategy Web** ou **Library Web**, crie um novo **Dossier**.
 2. Adicione os dados do cubo publicado em:
    `Public Objects` > `Reports` > `Data Lineage` > selecione o Cubo.
@@ -129,10 +127,12 @@ O cubo publicado contém 4 tabelas relacionais em memória com relacionamentos n
    - **Nível 1**: `source_name` (Banco de Dados)
    - **Nível 2**: `table_name` (Tabela)
    - **Nível 3**: `model_name` (Modelo de Dados)
-   - **Nível 4**: `object_name` (Atributos e Métricas)
-   - **Nível 5**: `dependent_name` (Dossiers, Relatórios e Agentes)
+   - **Nível 4**: `object_name` (Atributos e Fact Metrics)
+   - **Nível 5**: `metric_name` (Métricas Calculadas ou `(Direto)`)
+   - **Nível 6**: `dependent_name` (Dossiers, Relatórios e Agentes)
    - **Métrica / Peso**: `weight`
-5. O visual exibirá o fluxo conectando diretamente cada estágio ao próximo!
+5. O visual exibirá o fluxo conectando diretamente:
+   `Banco ──▶ Tabela ──▶ Modelo ──▶ Fact Metric ──▶ Métrica Calculada ──▶ Dossier/Bot` (ou `(Direto)` para atributos)!
 
 ### 6.2. Comparação de Modelos e Fontes de Dados (Grid / Matriz)
 Para descobrir se você possui mais de um modelo criado em cima da mesma fonte de dados e se usam tabelas diferentes:

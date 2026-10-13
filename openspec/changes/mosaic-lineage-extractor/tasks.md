@@ -69,4 +69,12 @@
 - [x] 11.3 Adicionar testes unitários com fixture contendo métricas calculadas simples e compostas em `tests/test_mosaic_lineage.py`
 - [x] 11.4 Atualizar documentação no [README.md](file:///c:/Users/erik.marinho/OneDrive/Códigos/Data Lineage Strategy EGCM/README.md) documentando valores de `object_type` (`attribute`, `fact_metric`, `metric`) e exibição de fórmulas de métricas calculadas
 
+## 12. Encadeamento de Métricas Calculadas após Fact Metrics no Sankey e Preservação de Links Diretos
+
+- [x] 12.1 Implementar resolução da primeira `fact_metric` da fórmula para cada métrica calculada em `CubePublisher`
+- [x] 12.2 Atualizar `CubePublisher.build_sankey_dataframe` para incluir coluna `metric_name`, encadeando `fact_metric -> metric_name` e mantendo linhas de acesso direto `object_name -> dependent_name` com `metric_name='(Direto)'`
+- [x] 12.3 Atualizar testes unitários em `tests/test_mosaic_lineage.py` validando novo fluxo `fact_metric -> metric_name` e links diretos
+- [x] 12.4 Atualizar documentação no [README.md](file:///c:/Users/erik.marinho/OneDrive/Códigos/Data Lineage Strategy EGCM/README.md) com a ordem de 6 níveis no Sankey e matriz de relacionamentos
+
+
 

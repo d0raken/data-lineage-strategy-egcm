@@ -8,7 +8,7 @@ from mstrio.connection import Connection
 from mstrio.object_management import Folder, full_search
 from mstrio.project_objects.datasets import SuperCube
 from mstrio.types import ObjectTypes
-from mosaic_lineage.models import LineageGraph
+from mosaic_lineage.models import LineageGraph, Node
 
 logger = logging.getLogger("mosaic_lineage.cube_publisher")
 
@@ -199,6 +199,30 @@ class CubePublisher:
 
             return tables
 
+        def get_first_fact_metric_for_metric(m_id: str, visited: Optional[set] = None) -> Optional[Node]:
+            """Encontra a primeira fact_metric referenciada na fórmula de uma métrica calculada."""
+            if visited is None:
+                visited = set()
+            if m_id in visited:
+                return None
+            visited.add(m_id)
+
+            ref_ids = [
+                e.target_id for e in graph.edges
+                if e.source_id == m_id and e.relationship_type == "calculates_from" and e.target_id in graph.nodes
+            ]
+            for r_id in ref_ids:
+                node = graph.nodes[r_id]
+                if node.type == "fact_metric":
+                    return node
+            for r_id in ref_ids:
+                node = graph.nodes[r_id]
+                if node.type == "metric":
+                    sub = get_first_fact_metric_for_metric(r_id, visited)
+                    if sub:
+                        return sub
+            return None
+
         for model in model_nodes:
             # 1. Tabelas que alimentam este modelo
             model_table_ids = [
@@ -216,7 +240,6 @@ class CubePublisher:
                 e.target_id for e in graph.edges
                 if e.source_id == model.id and e.relationship_type in ("defines", "contains") and e.target_id in graph.nodes
             ]
-            # Inclui também qualquer métrica catalogada do modelo ou grafo
             for m_id in graph.metrics_catalog:
                 if m_id in graph.nodes and m_id not in model_obj_ids:
                     model_obj_ids.append(m_id)
@@ -224,8 +247,13 @@ class CubePublisher:
             model_objects = [graph.nodes[oid] for oid in dict.fromkeys(model_obj_ids) if oid in graph.nodes]
             if not model_objects:
                 model_objects = [n for n in graph.nodes.values() if n.type in ("attribute", "fact_metric", "metric")]
-            if not model_objects:
-                model_objects = [None]
+
+            base_objects = [n for n in model_objects if n and n.type in ("attribute", "fact_metric")]
+            calc_metrics = [n for n in model_objects if n and n.type == "metric"]
+            # Garante que métricas do catálogo também estejam em calc_metrics se ausentes
+            for m_id, m_def in graph.metrics_catalog.items():
+                if m_id in graph.nodes and graph.nodes[m_id] not in calc_metrics:
+                    calc_metrics.append(graph.nodes[m_id])
 
             # 3. Para cada tabela, identificar Data Source upstream
             for tbl in model_tables:
@@ -246,83 +274,133 @@ class CubePublisher:
                     ds_name = ds.name if ds else "In-Memory / File Import"
                     tbl_name = tbl.name if tbl else "(Sem Tabela)"
 
-                    # 4. Relacionar com objetos do modelo
-                    for obj in model_objects:
-                        if obj:
-                            # Se objeto tiver vínculo específico com tabela via maps_to, sources_from ou dependência calculada
-                            obj_table_ids = get_object_table_ids(obj.id)
-                            if tbl and obj_table_ids and tbl.id not in obj_table_ids:
-                                continue
+                    # 4.A. Relacionamento Direto: Objetos Base (Attributes e Fact Metrics) -> Dependentes
+                    for obj in base_objects:
+                        obj_table_ids = get_object_table_ids(obj.id)
+                        if tbl and obj_table_ids and tbl.id not in obj_table_ids:
+                            continue
 
-                            obj_name = obj.name
-                            obj_type = obj.type
+                        obj_name = obj.name
+                        obj_type = obj.type
 
-                            # Recuperar fórmula e atributos de métrica
-                            m_def = graph.metrics_catalog.get(obj.id)
-                            if m_def and m_def.formula_text:
-                                obj_formula = m_def.formula_text
-                                obj_aggregation = m_def.aggregation or "Default"
-                                obj_is_compound = "True" if m_def.is_compound else "False"
-                            elif obj.properties.get("formula"):
-                                obj_formula = str(obj.properties.get("formula"))
-                                obj_aggregation = str(obj.properties.get("aggregation", "Default"))
-                                obj_is_compound = str(obj.properties.get("is_compound", "False"))
-                            elif obj_type == "fact_metric":
-                                fn = obj.properties.get("function") or "Fact"
-                                obj_formula = f"{fn}({obj.name})"
-                                obj_aggregation = fn
-                                obj_is_compound = "False"
-                            elif m_def:
-                                obj_formula = m_def.formula_text or "N/A"
-                                obj_aggregation = m_def.aggregation or "Default"
-                                obj_is_compound = "True" if m_def.is_compound else "False"
-                            else:
-                                obj_formula = "N/A"
-                                obj_aggregation = "None"
-                                obj_is_compound = "False"
+                        if obj_type == "fact_metric":
+                            fn = obj.properties.get("function") or "Fact"
+                            obj_formula = f"{fn}({obj.name})"
+                            obj_aggregation = fn
+                            obj_is_compound = "False"
+                        else:
+                            obj_formula = "N/A"
+                            obj_aggregation = "None"
+                            obj_is_compound = "False"
 
-                            # 5. Dependentes downstream do objeto ou modelo
+                        dep_ids = [
+                            e.target_id for e in graph.edges
+                            if e.source_id == obj.id and e.relationship_type == "used_by" and e.target_id in graph.nodes
+                        ]
+                        if not dep_ids:
                             dep_ids = [
                                 e.target_id for e in graph.edges
-                                if e.source_id == obj.id and e.relationship_type == "used_by" and e.target_id in graph.nodes
+                                if e.source_id == model.id and e.relationship_type == "used_by" and e.target_id in graph.nodes
                             ]
-                            if not dep_ids:
-                                dep_ids = [
-                                    e.target_id for e in graph.edges
-                                    if e.source_id == model.id and e.relationship_type == "used_by" and e.target_id in graph.nodes
-                                ]
-                            dependents = [graph.nodes[did] for did in dict.fromkeys(dep_ids)]
-                            if not dependents:
-                                dependents = [None]
+                        dependents = [graph.nodes[did] for did in dict.fromkeys(dep_ids)]
+                        if not dependents:
+                            dependents = [None]
 
-                            for dep in dependents:
-                                rows.append({
-                                    "source_name": ds_name,
-                                    "table_name": tbl_name,
-                                    "model_name": model.name,
-                                    "object_name": obj_name,
-                                    "object_type": obj_type,
-                                    "formula": obj_formula,
-                                    "aggregation": obj_aggregation,
-                                    "is_compound": obj_is_compound,
-                                    "dependent_name": dep.name if dep else "(Nenhum)",
-                                    "dependent_type": dep.type if dep else "none",
-                                    "weight": 1
-                                })
-                        else:
+                        for dep in dependents:
                             rows.append({
                                 "source_name": ds_name,
                                 "table_name": tbl_name,
                                 "model_name": model.name,
-                                "object_name": "(Sem Objetos)",
-                                "object_type": "none",
-                                "formula": "N/A",
-                                "aggregation": "None",
-                                "is_compound": "False",
-                                "dependent_name": "(Nenhum)",
-                                "dependent_type": "none",
+                                "object_name": obj_name,
+                                "object_type": obj_type,
+                                "metric_name": "(Direto)",
+                                "formula": obj_formula,
+                                "aggregation": obj_aggregation,
+                                "is_compound": obj_is_compound,
+                                "dependent_name": dep.name if dep else "(Nenhum)",
+                                "dependent_type": dep.type if dep else "none",
                                 "weight": 1
                             })
+
+                    # 4.B. Relacionamento com Métrica Calculada: Fact Metric -> Metric Name -> Dependentes
+                    for m_obj in calc_metrics:
+                        m_def = graph.metrics_catalog.get(m_obj.id)
+                        fm_node = get_first_fact_metric_for_metric(m_obj.id)
+
+                        if fm_node:
+                            fm_table_ids = get_object_table_ids(fm_node.id)
+                            if tbl and fm_table_ids and tbl.id not in fm_table_ids:
+                                continue
+                            parent_obj_name = fm_node.name
+                            parent_obj_type = "fact_metric"
+                        else:
+                            m_table_ids = get_object_table_ids(m_obj.id)
+                            if tbl and m_table_ids and tbl.id not in m_table_ids:
+                                continue
+                            parent_obj_name = "(Métrica Calculada)"
+                            parent_obj_type = "metric"
+
+                        if m_def and m_def.formula_text:
+                            calc_formula = m_def.formula_text
+                            calc_aggregation = m_def.aggregation or "Default"
+                            calc_is_compound = "True" if m_def.is_compound else "False"
+                        elif m_obj.properties.get("formula"):
+                            calc_formula = str(m_obj.properties.get("formula"))
+                            calc_aggregation = str(m_obj.properties.get("aggregation", "Default"))
+                            calc_is_compound = str(m_obj.properties.get("is_compound", "False"))
+                        elif m_def:
+                            calc_formula = m_def.formula_text or "N/A"
+                            calc_aggregation = m_def.aggregation or "Default"
+                            calc_is_compound = "True" if m_def.is_compound else "False"
+                        else:
+                            calc_formula = "N/A"
+                            calc_aggregation = "None"
+                            calc_is_compound = "False"
+
+                        dep_ids = [
+                            e.target_id for e in graph.edges
+                            if e.source_id == m_obj.id and e.relationship_type == "used_by" and e.target_id in graph.nodes
+                        ]
+                        if not dep_ids:
+                            dep_ids = [
+                                e.target_id for e in graph.edges
+                                if e.source_id == model.id and e.relationship_type == "used_by" and e.target_id in graph.nodes
+                            ]
+                        dependents = [graph.nodes[did] for did in dict.fromkeys(dep_ids)]
+                        if not dependents:
+                            dependents = [None]
+
+                        for dep in dependents:
+                            rows.append({
+                                "source_name": ds_name,
+                                "table_name": tbl_name,
+                                "model_name": model.name,
+                                "object_name": parent_obj_name,
+                                "object_type": parent_obj_type,
+                                "metric_name": m_obj.name,
+                                "formula": calc_formula,
+                                "aggregation": calc_aggregation,
+                                "is_compound": calc_is_compound,
+                                "dependent_name": dep.name if dep else "(Nenhum)",
+                                "dependent_type": dep.type if dep else "none",
+                                "weight": 1
+                            })
+
+                    if not base_objects and not calc_metrics:
+                        rows.append({
+                            "source_name": ds_name,
+                            "table_name": tbl_name,
+                            "model_name": model.name,
+                            "object_name": "(Sem Objetos)",
+                            "object_type": "none",
+                            "metric_name": "(N/A)",
+                            "formula": "N/A",
+                            "aggregation": "None",
+                            "is_compound": "False",
+                            "dependent_name": "(Nenhum)",
+                            "dependent_type": "none",
+                            "weight": 1
+                        })
 
         if not rows:
             rows.append({
@@ -331,6 +409,7 @@ class CubePublisher:
                 "model_name": "N/A",
                 "object_name": "N/A",
                 "object_type": "none",
+                "metric_name": "(N/A)",
                 "formula": "N/A",
                 "aggregation": "None",
                 "is_compound": "False",
