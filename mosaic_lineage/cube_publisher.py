@@ -173,6 +173,32 @@ class CubePublisher:
                 })
             return pd.DataFrame(rows)
 
+        def get_object_table_ids(obj_id: str, visited: Optional[set] = None) -> set:
+            """Busca tabelas associadas a um objeto, inclusive recursivamente para métricas calculadas."""
+            if visited is None:
+                visited = set()
+            if obj_id in visited:
+                return set()
+            visited.add(obj_id)
+
+            # 1. Tabelas diretas via maps_to ou sources_from
+            tables = {
+                e.target_id for e in graph.edges
+                if e.source_id == obj_id and e.relationship_type in ("maps_to", "sources_from") and e.target_id in graph.nodes
+            }
+            if tables:
+                return tables
+
+            # 2. Se for métrica calculada, rastrear objetos referenciados via calculates_from
+            ref_ids = [
+                e.target_id for e in graph.edges
+                if e.source_id == obj_id and e.relationship_type == "calculates_from" and e.target_id in graph.nodes
+            ]
+            for ref_id in ref_ids:
+                tables.update(get_object_table_ids(ref_id, visited))
+
+            return tables
+
         for model in model_nodes:
             # 1. Tabelas que alimentam este modelo
             model_table_ids = [
@@ -190,7 +216,12 @@ class CubePublisher:
                 e.target_id for e in graph.edges
                 if e.source_id == model.id and e.relationship_type in ("defines", "contains") and e.target_id in graph.nodes
             ]
-            model_objects = [graph.nodes[oid] for oid in dict.fromkeys(model_obj_ids)]
+            # Inclui também qualquer métrica catalogada do modelo ou grafo
+            for m_id in graph.metrics_catalog:
+                if m_id in graph.nodes and m_id not in model_obj_ids:
+                    model_obj_ids.append(m_id)
+
+            model_objects = [graph.nodes[oid] for oid in dict.fromkeys(model_obj_ids) if oid in graph.nodes]
             if not model_objects:
                 model_objects = [n for n in graph.nodes.values() if n.type in ("attribute", "fact_metric", "metric")]
             if not model_objects:
@@ -218,11 +249,8 @@ class CubePublisher:
                     # 4. Relacionar com objetos do modelo
                     for obj in model_objects:
                         if obj:
-                            # Se objeto tiver vínculo específico com tabela via maps_to ou sources_from
-                            obj_table_ids = {
-                                e.target_id for e in graph.edges
-                                if e.source_id == obj.id and e.relationship_type in ("maps_to", "sources_from")
-                            }
+                            # Se objeto tiver vínculo específico com tabela via maps_to, sources_from ou dependência calculada
+                            obj_table_ids = get_object_table_ids(obj.id)
                             if tbl and obj_table_ids and tbl.id not in obj_table_ids:
                                 continue
 
@@ -231,19 +259,23 @@ class CubePublisher:
 
                             # Recuperar fórmula e atributos de métrica
                             m_def = graph.metrics_catalog.get(obj.id)
-                            if m_def:
-                                obj_formula = m_def.formula_text or "N/A"
+                            if m_def and m_def.formula_text:
+                                obj_formula = m_def.formula_text
                                 obj_aggregation = m_def.aggregation or "Default"
                                 obj_is_compound = "True" if m_def.is_compound else "False"
+                            elif obj.properties.get("formula"):
+                                obj_formula = str(obj.properties.get("formula"))
+                                obj_aggregation = str(obj.properties.get("aggregation", "Default"))
+                                obj_is_compound = str(obj.properties.get("is_compound", "False"))
                             elif obj_type == "fact_metric":
                                 fn = obj.properties.get("function") or "Fact"
                                 obj_formula = f"{fn}({obj.name})"
                                 obj_aggregation = fn
                                 obj_is_compound = "False"
-                            elif obj.properties.get("formula"):
-                                obj_formula = str(obj.properties.get("formula"))
-                                obj_aggregation = str(obj.properties.get("aggregation", "Default"))
-                                obj_is_compound = str(obj.properties.get("is_compound", "False"))
+                            elif m_def:
+                                obj_formula = m_def.formula_text or "N/A"
+                                obj_aggregation = m_def.aggregation or "Default"
+                                obj_is_compound = "True" if m_def.is_compound else "False"
                             else:
                                 obj_formula = "N/A"
                                 obj_aggregation = "None"

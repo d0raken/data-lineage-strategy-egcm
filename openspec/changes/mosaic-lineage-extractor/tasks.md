@@ -64,8 +64,9 @@
 
 ## 11. Suporte e Rastreabilidade Completa de Métricas Calculadas (metrics)
 
-- [ ] 11.1 Garantir que `object_type` inclua métricas calculadas (`metric`) e resolva tabelas upstream via dependências em `CubePublisher.build_sankey_dataframe`
-- [ ] 11.2 Garantir preenchimento e correspondência da coluna `formula` para métricas calculadas a partir de tokens, `expressionText` e catálogo
-- [ ] 11.3 Adicionar testes unitários com fixture contendo métricas calculadas simples e compostas em `tests/test_mosaic_lineage.py`
-- [ ] 11.4 Atualizar documentação no [README.md](file:///c:/Users/erik.marinho/OneDrive/Códigos/Data Lineage Strategy EGCM/README.md) documentando valores de `object_type` (`attribute`, `fact_metric`, `metric`) e exibição de fórmulas de métricas calculadas
+- [x] 11.1 Garantir que `object_type` inclua métricas calculadas (`metric`) e resolva tabelas upstream via dependências em `CubePublisher.build_sankey_dataframe`
+- [x] 11.2 Garantir preenchimento e correspondência da coluna `formula` para métricas calculadas a partir de tokens, `expressionText` e catálogo
+- [x] 11.3 Adicionar testes unitários com fixture contendo métricas calculadas simples e compostas em `tests/test_mosaic_lineage.py`
+- [x] 11.4 Atualizar documentação no [README.md](file:///c:/Users/erik.marinho/OneDrive/Códigos/Data Lineage Strategy EGCM/README.md) documentando valores de `object_type` (`attribute`, `fact_metric`, `metric`) e exibição de fórmulas de métricas calculadas
+
 

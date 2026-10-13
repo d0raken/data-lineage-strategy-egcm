@@ -97,6 +97,10 @@ def main(args: Optional[list] = None) -> int:
 
     logger.info("Consultando métricas...")
     metrics = client.get_metrics(model_id)
+    if not metrics and isinstance(model_meta, dict):
+        metrics = model_meta.get("metrics") or model_meta.get("calculatedMetrics") or []
+    if metrics:
+        logger.info("Métricas calculadas encontradas: %d", len(metrics))
 
     logger.info("Consultando fact metrics...")
     fact_metrics = client.get_fact_metrics(model_id)

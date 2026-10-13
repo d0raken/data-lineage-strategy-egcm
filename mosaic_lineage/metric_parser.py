@@ -28,6 +28,15 @@ class MetricParser:
             formula_text = raw.get("expressionText")
         elif raw.get("formula"):
             formula_text = raw.get("formula")
+        elif isinstance(expression, str) and expression:
+            formula_text = expression
+        elif isinstance(raw.get("definition"), dict):
+            defn = raw["definition"]
+            formula_text = (
+                defn.get("expressionText")
+                or (defn.get("expression", {}).get("text") if isinstance(defn.get("expression"), dict) else None)
+                or formula_text
+            )
 
         # Verifica embeddedObjects caso tokens não existam ou não tenham referências
         for emb in raw.get("embeddedObjects", []):

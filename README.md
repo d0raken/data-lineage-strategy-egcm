@@ -98,12 +98,15 @@ python extract_lineage.py --model-id "3B9C79AD848B478BBA3419E39C2CACBF" --format
 O cubo publicado contém 4 tabelas relacionais em memória com relacionamentos nativos harmonizados:
 
 1. **`Lineage_Sankey`** (Pronto para Sankey e Grades com fórmulas):
-   - `source_name`: Nome da conexão/banco (ex: `postgres_emarinho`)
-   - `table_name`: Nome da tabela (ex: `video_game_sales`)
+   - `source_name`: Nome da conexão/banco (ex: `postgres_emarinho`, `Oracle ERP`)
+   - `table_name`: Nome da tabela (ex: `video_game_sales`, `tb_lancamentos`)
    - `model_name`: Nome do modelo analítico (ex: `Video Games`)
-   - `object_name`: Nome do atributo ou métrica criada (ex: `Platform`, `Global Sales`)
-   - `object_type`: Tipo do objeto (`attribute`, `fact_metric`, `metric`)
-   - `formula`: **Fórmula resolvida da métrica** (ou `'N/A'` para atributos)
+   - `object_name`: Nome do atributo ou métrica criada (ex: `Platform`, `Global Sales`, `Valor Líquido`)
+   - `object_type`: Tipo do objeto semântico com três valores disponíveis:
+     - **`attribute`**: Atributo dimensional do modelo
+     - **`fact_metric`**: Métrica direta baseada em fato/coluna (ex: `sum(Valor_Bruto)`)
+     - **`metric`**: Métrica calculada ou composta (ex: `[Valor Bruto] * 0.15`, rastreada até as tabelas upstream dos fatos)
+   - `formula`: **Fórmula resolvida da métrica** (expressão matemática para `metric`, agregação para `fact_metric` ou `'N/A'` para atributos)
    - `aggregation`: Tipo de agregação da métrica (ex: `Sum`, `Avg` ou `'None'`)
    - `is_compound`: Indicador de métrica composta (`'True'`, `'False'` ou `'N/A'`)
    - `dependent_name`: Nome do artefato consumidor (ex: `Torre de Controle - Expo`) ou `(Nenhum)`
@@ -111,7 +114,7 @@ O cubo publicado contém 4 tabelas relacionais em memória com relacionamentos n
    - `weight`: Métrica de contagem / peso (numérico = `1`)
 2. **`Nodes`**: Catálogo estrutural completo de entidades (`node_id`, `node_name`, `node_type`, `properties`).
 3. **`Edges`**: Conexões direcionadas do grafo DAG (`source_id`, `target_id`, `relationship_type`).
-4. **`Metrics_Catalog`**: Métricas atômicas e compostas, fórmulas e dependências (contendo `model_name` e `object_name` para cruzamento com `Lineage_Sankey`).
+4. **`Metrics_Catalog`**: Métricas atômicas e compostas, fórmulas e dependências (contendo `model_name` e `object_name` para cruzamento nativo com `Lineage_Sankey`).
 
 ---
 

@@ -315,6 +315,90 @@ class TestMosaicLineage(unittest.TestCase):
             result = publisher.get_or_create_reports_folder(subfolder_name="Data Lineage")
             self.assertIsNotNone(result)
 
+    def test_calculated_metrics_lineage_and_formula(self):
+        """Valida que métricas calculadas aparecem com object_type='metric', herdando tabela dos fatos e com fórmula correta."""
+        from mosaic_lineage.cube_publisher import CubePublisher
+
+        model_meta = {
+            "id": "DM_FINANCE",
+            "name": "Modelo Financeiro",
+            "description": "Modelo com métricas calculadas compostas"
+        }
+        attributes = [
+            {"id": "ATTR_CONTA", "name": "Conta Contábil", "forms": [{"id": "F_ID", "tables": [{"id": "TBL_LANCAMENTOS", "name": "tb_lancamentos"}]}]}
+        ]
+        fact_metrics = [
+            {"id": "FM_VALOR_BRUTO", "name": "Valor Bruto", "tableId": "TBL_LANCAMENTOS", "dataType": "DECIMAL", "function": "Sum"}
+        ]
+        metrics = [
+            {
+                "id": "M_IMPOSTO",
+                "name": "Imposto Calculado",
+                "expression": {
+                    "text": "[Valor Bruto] * 0.15",
+                    "tokens": [
+                        {"type": "object_reference", "target": {"objectId": "FM_VALOR_BRUTO", "name": "Valor Bruto", "subType": "FACT_METRIC"}},
+                        {"type": "operator", "value": "*"},
+                        {"type": "constant", "value": "0.15"}
+                    ]
+                }
+            },
+            {
+                "id": "M_VALOR_LIQUIDO",
+                "name": "Valor Líquido",
+                "expression": {
+                    "text": "[Valor Bruto] - [Imposto Calculado]",
+                    "tokens": [
+                        {"type": "object_reference", "target": {"objectId": "FM_VALOR_BRUTO", "name": "Valor Bruto", "subType": "FACT_METRIC"}},
+                        {"type": "operator", "value": "-"},
+                        {"type": "object_reference", "target": {"objectId": "M_IMPOSTO", "name": "Imposto Calculado", "subType": "METRIC"}}
+                    ]
+                }
+            }
+        ]
+        datasource = {"id": "DS_ORACLE", "name": "Oracle ERP"}
+
+        builder = GraphBuilder()
+        graph = builder.build_from_model_data(
+            model_metadata=model_meta,
+            attributes_data=attributes,
+            metrics_data=metrics,
+            fact_metrics_data=fact_metrics,
+            relationships_data=[],
+            datasource_data=datasource
+        )
+
+        publisher = CubePublisher(connection=MagicMock())
+        df_sankey = publisher.build_sankey_dataframe(graph)
+
+        # 1. Verifica presença de todos os tipos em object_type
+        object_types = set(df_sankey["object_type"].unique())
+        self.assertIn("attribute", object_types)
+        self.assertIn("fact_metric", object_types)
+        self.assertIn("metric", object_types)
+
+        # 2. Verifica correspondência exata de fórmulas para métricas calculadas
+        df_imposto = df_sankey[df_sankey["object_name"] == "Imposto Calculado"]
+        self.assertFalse(df_imposto.empty)
+        self.assertEqual(df_imposto.iloc[0]["formula"], "[Valor Bruto] * 0.15")
+        self.assertEqual(df_imposto.iloc[0]["object_type"], "metric")
+        # Rastreabilidade upstream resolvida via fato -> tabela
+        self.assertEqual(df_imposto.iloc[0]["table_name"], "tb_lancamentos")
+        self.assertEqual(df_imposto.iloc[0]["source_name"], "Oracle ERP")
+
+        df_liq = df_sankey[df_sankey["object_name"] == "Valor Líquido"]
+        self.assertFalse(df_liq.empty)
+        self.assertEqual(df_liq.iloc[0]["formula"], "[Valor Bruto] - [Imposto Calculado]")
+        self.assertEqual(df_liq.iloc[0]["object_type"], "metric")
+        self.assertEqual(df_liq.iloc[0]["is_compound"], "True")
+        self.assertEqual(df_liq.iloc[0]["table_name"], "tb_lancamentos")
+
+        # 3. Verifica Metrics_Catalog
+        df_cat = publisher.build_metrics_dataframe(graph)
+        metric_names = set(df_cat["object_name"].unique())
+        self.assertIn("Imposto Calculado", metric_names)
+        self.assertIn("Valor Líquido", metric_names)
+
 
 if __name__ == "__main__":
     unittest.main()
