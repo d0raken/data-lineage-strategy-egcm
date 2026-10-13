@@ -419,6 +419,67 @@ class TestMosaicLineage(unittest.TestCase):
         self.assertIn("Imposto Calculado", metric_names)
         self.assertIn("Valor Líquido", metric_names)
 
+    def test_mosaic_client_datasource_and_dependents(self):
+        from mosaic_lineage.client import MosaicClient
+
+        client = MosaicClient.__new__(MosaicClient)
+        client.connection = MagicMock()
+        client.connection.project_id = "PROJ_TEST"
+
+        # Mock de tabelas com primaryDataSource direto
+        def mock_get(endpoint, params=None):
+            if endpoint == "/model/dataModels/M1/tables":
+                return {
+                    "tables": [
+                        {"information": {"objectId": "T1", "name": "tb_vendas"}}
+                    ]
+                }
+            elif endpoint == "/model/dataModels/M1/tables/T1":
+                return {
+                    "information": {"objectId": "T1", "name": "tb_vendas"},
+                    "primaryDataSource": {
+                        "objectId": "DS_POSTGRES",
+                        "name": "Postgres DW"
+                    }
+                }
+            elif endpoint == "/model/dataModels/M2/tables":
+                return {
+                    "tables": [
+                        {"information": {"objectId": "T2", "name": "tb_pipeline"}}
+                    ]
+                }
+            elif endpoint == "/model/dataModels/M2/tables/T2":
+                return {
+                    "information": {"objectId": "T2", "name": "tb_pipeline"},
+                    "physicalTable": {
+                        "pipeline": {
+                            "rootTable": {
+                                "children": [
+                                    {"importSource": {"dataSourceId": "DS_ORACLE"}}
+                                ]
+                            }
+                        }
+                    }
+                }
+            elif endpoint == "/api/datasources/DS_ORACLE":
+                return {"id": "DS_ORACLE", "name": "Oracle ERP"}
+            raise ValueError(f"Unknown endpoint: {endpoint}")
+
+        client._get = MagicMock(side_effect=mock_get)
+
+        # Testa extração via primaryDataSource
+        ds1 = client.get_datasource_info("M1")
+        self.assertIsNotNone(ds1)
+        self.assertEqual(ds1["name"], "Postgres DW")
+        self.assertEqual(ds1["id"], "DS_POSTGRES")
+
+        # Testa extração via physicalTable pipeline
+        ds2 = client.get_datasource_info("M2")
+        self.assertIsNotNone(ds2)
+        self.assertEqual(ds2["name"], "Oracle ERP")
+        self.assertEqual(ds2["id"], "DS_ORACLE")
+
 
 if __name__ == "__main__":
     unittest.main()
+
