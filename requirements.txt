@@ -1,0 +1,5 @@
+mstrio-py>=11.6.5
+requests>=2.28.0
+pandas>=2.0.0
+pyyaml>=6.0
+pydantic>=2.0.0
